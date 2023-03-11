@@ -32,7 +32,7 @@ import (
 
 const (
 	// The value of "type" key in configuration.
-	typeStr = "jniprocessor"
+	typeStr = "jni"
 	// The stability level of the processor.
 	stability = component.StabilityLevelDevelopment
 )
