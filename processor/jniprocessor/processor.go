@@ -187,6 +187,37 @@ func (ltp *tracesJniProcessor) Start(ctx context.Context, host component.Host) e
 }
 
 func (ltp *tracesJniProcessor) ConsumeTraces(ctx context.Context, traces ptrace.Traces) error {
+	marshaler := &ptrace.ProtoMarshaler{}
+	marshaledBytes, err := marshaler.MarshalTraces(traces)
+	if err != nil {
+		ltp.logger.Error("error marshaling traces to protobuffers")
+		return nil
+	}
+
+	// hopefully the concurrency can be optimized.. need to investigate processor threading later
+	runtime.LockOSThread()
+	nenv := jvm.AttachCurrentThread()
+
+	var processedBytes []byte
+	if err = nenv.CallStaticMethod("OtelJniProcessor/Processor", "processTraces", processedBytes, marshaledBytes); err != nil {
+		ltp.logger.Error("error callning Java method OtelJniProcessor/Processor.processTraces")
+		return nil
+	}
+
+	if err := jvm.DetachCurrentThread(); err != nil {
+		ltp.logger.Error("error detaching thread")
+		return nil
+	}
+	runtime.UnlockOSThread() // need to investigate how this interacts with the rest of the pipeline
+
+	unmarshaler := &ptrace.ProtoUnmarshaler{}
+	traces2, err2 := unmarshaler.UnmarshalTraces(processedBytes)
+	if err2 != nil {
+		ltp.logger.Error("error unmarshaling traces from processedBytes protobuffers")
+		return nil
+	}
+
+	traces.CopyTo(traces2)
 	return nil
 }
 
@@ -228,6 +259,37 @@ func (ltp *metricsJniProcessor) Start(ctx context.Context, host component.Host) 
 	return nil
 }
 
-func (ltp *metricsJniProcessor) ConsumeMetrics(ctx context.Context, ld pmetric.Metrics) error {
+func (ltp *metricsJniProcessor) ConsumeMetrics(ctx context.Context, metrics pmetric.Metrics) error {
+	marshaler := &pmetric.ProtoMarshaler{}
+	marshaledBytes, err := marshaler.MarshalMetrics(metrics)
+	if err != nil {
+		ltp.logger.Error("error marshaling metrics to protobuffers")
+		return nil
+	}
+
+	// hopefully the concurrency can be optimized.. need to investigate processor threading later
+	runtime.LockOSThread()
+	nenv := jvm.AttachCurrentThread()
+
+	var processedBytes []byte
+	if err = nenv.CallStaticMethod("OtelJniProcessor/Processor", "processMetrics", processedBytes, marshaledBytes); err != nil {
+		ltp.logger.Error("error callning Java method OtelJniProcessor/Processor.processMetrics")
+		return nil
+	}
+
+	if err := jvm.DetachCurrentThread(); err != nil {
+		ltp.logger.Error("error detaching thread")
+		return nil
+	}
+	runtime.UnlockOSThread() // need to investigate how this interacts with the rest of the pipeline
+
+	unmarshaler := &pmetric.ProtoUnmarshaler{}
+	metrics2, err2 := unmarshaler.UnmarshalMetrics(processedBytes)
+	if err2 != nil {
+		ltp.logger.Error("error unmarshaling metrics from processedBytes protobuffers")
+		return nil
+	}
+
+	metrics2.CopyTo(metrics)
 	return nil
 }
